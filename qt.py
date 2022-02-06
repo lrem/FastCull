@@ -1,4 +1,3 @@
-from tkinter import N
 from PySide6 import QtCore
 from PySide6.QtCore import Qt, Slot
 from PySide6 import QtGui
@@ -10,7 +9,19 @@ import sys
 import time
 
 PHOTO_EXTENSIONS = ["jpg", "JPG", "jpeg", "JPEG"]
-PRELOAD_COUNT = 100
+PRELOAD_COUNT = 10
+
+class Wrapper(QtCore.QRunnable):
+
+    def __init__(self, function, *args, **kwargs):
+        self.function = function
+        self.args = args
+        self.kwargs = kwargs
+        super().__init__()
+
+    @Slot()
+    def run(self):
+        self.function(*self.args, **self.kwargs)
 
 class Viewer(QtWidgets.QWidget):
 
@@ -38,7 +49,7 @@ class Viewer(QtWidgets.QWidget):
         print("Switching to", self.filenames[new_index])
         timing = [(time.time(), "start")]
         self.current_index = new_index
-        self.thread_pool.start(self.preload)
+        self.preload()
         timing.append((time.time(), "launching preload"))
         self.load(new_index)
         timing.append((time.time(), "loading"))
@@ -53,13 +64,12 @@ class Viewer(QtWidgets.QWidget):
         for i in range(1, len(timing)):
             print("%.2fs %s" % (timing[i][0] - timing[i-1][0], timing[i][1]))
 
-    @Slot()
     def preload(self):
         # The current_index one is loaded in main thread if needed.
         start = self.current_index + 1
         stop = min(self.current_index + PRELOAD_COUNT, len(self.filenames))
         for index in range(start, stop):
-            self.load(index)
+            self.thread_pool.start(Wrapper(self.load, index))
 
     def load(self, index: int):
         locker = QtCore.QMutexLocker(self.load_mutexes[index])
