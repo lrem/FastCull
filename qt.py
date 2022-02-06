@@ -1,12 +1,13 @@
 from tkinter import N
-from PyQt6 import QtCore
-from PyQt6.QtCore import Qt, pyqtSlot
-from PyQt6 import QtGui
-from PyQt6 import QtWidgets
+from PySide6 import QtCore
+from PySide6.QtCore import Qt, Slot
+from PySide6 import QtGui
+from PySide6 import QtWidgets
 
 from typing import List
 import os
 import sys
+import time
 
 PHOTO_EXTENSIONS = ["jpg", "JPG", "jpeg", "JPEG"]
 PRELOAD_COUNT = 100
@@ -35,17 +36,24 @@ class Viewer(QtWidgets.QWidget):
 
     def switch(self, new_index: int):
         print("Switching to", self.filenames[new_index])
+        timing = [(time.time(), "start")]
         self.current_index = new_index
         self.thread_pool.start(self.preload)
+        timing.append((time.time(), "launching preload"))
         self.load(new_index)
+        timing.append((time.time(), "loading"))
         if self.scaled[new_index] is None:
             self.scaled[new_index] = self.pixmaps[new_index].scaled(
                 self.width(), self.height(),
-                aspectRatioMode=Qt.AspectRatioMode.KeepAspectRatio,
-                transformMode=Qt.TransformationMode.SmoothTransformation)
+                aspectMode=Qt.AspectRatioMode.KeepAspectRatio,
+                mode=Qt.TransformationMode.SmoothTransformation)
+        timing.append((time.time(), "scaling"))
         self.label.setPixmap(self.scaled[new_index])
+        timing.append((time.time(), "displaying"))
+        for i in range(1, len(timing)):
+            print("%.2fs %s" % (timing[i][0] - timing[i-1][0], timing[i][1]))
 
-    @pyqtSlot()
+    @Slot()
     def preload(self):
         # The current_index one is loaded in main thread if needed.
         start = self.current_index + 1
@@ -58,6 +66,7 @@ class Viewer(QtWidgets.QWidget):
         if self.pixmaps[index] is None:
             full_path = os.path.join(self.path, self.filenames[index])
             self.pixmaps[index] = QtGui.QPixmap(full_path)
+        locker.unlock()
 
     def openDir(self, path: str):
         print("Opening ", path)
@@ -65,12 +74,14 @@ class Viewer(QtWidgets.QWidget):
         self.filenames = []
         self.pixmaps = []
         self.load_mutexes = []
+        start = time.time()
         for filename in sorted(os.listdir(path)):
             if filename.split('.')[-1] in PHOTO_EXTENSIONS:
                 self.filenames.append(filename)
                 self.pixmaps.append(None)
                 self.scaled.append(None)
                 self.load_mutexes.append(QtCore.QMutex())
+        print("%.2fs %s" % (time.time() - start, "listing directory"))
         if self.filenames:
             self.switch(0)
         else:
@@ -78,12 +89,12 @@ class Viewer(QtWidgets.QWidget):
 
     def keyPressEvent(self, event: QtGui.QKeyEvent) -> None:
         event.accept()
-        if event.key() == Qt.Key.Key_Escape.value:
+        if event.key() == Qt.Key_Escape:
             self.close()
         if self.current_index is not None:
-            if event.key() == Qt.Key.Key_Right.value:
+            if event.key() == Qt.Key.Key_Right:
                 self.switch((self.current_index + 1) % len(self.filenames))
-            if event.key() == Qt.Key.Key_Left.value:
+            if event.key() == Qt.Key.Key_Left:
                 self.switch((self.current_index - 1) % len(self.filenames))
         return super().keyPressEvent(event)
 
@@ -93,4 +104,6 @@ if __name__ == '__main__':
     window.showMaximized()
     if os.path.isdir(sys.argv[-1]):
         window.openDir(sys.argv[-1])
+    else:
+        print(sys.argv[-1], "does not seem to be a directory")
     app.exec()
