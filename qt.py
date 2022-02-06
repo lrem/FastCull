@@ -78,7 +78,7 @@ class Viewer(QtWidgets.QWidget):
             self.pixmaps[index] = QtGui.QPixmap(full_path)
         locker.unlock()
 
-    def openDir(self, path: str):
+    def openDir(self, path: str, start_file: str = None):
         print("Opening ", path)
         self.path = path
         self.filenames = []
@@ -92,7 +92,9 @@ class Viewer(QtWidgets.QWidget):
                 self.scaled.append(None)
                 self.load_mutexes.append(QtCore.QMutex())
         print("%.2fs %s" % (time.time() - start, "listing directory"))
-        if self.filenames:
+        if start_file:
+            self.switch(self.filenames.index(start_file))
+        elif self.filenames:
             self.switch(0)
         else:
             self.current_index = None
@@ -112,8 +114,11 @@ if __name__ == '__main__':
     app = QtWidgets.QApplication(sys.argv)
     window = Viewer()
     window.showMaximized()
-    if os.path.isdir(sys.argv[-1]):
-        window.openDir(sys.argv[-1])
+    arg = sys.argv[-1]
+    if os.path.isdir(arg):
+        window.openDir(arg)
+    elif os.path.isfile(arg):
+        window.openDir(os.path.dirname(arg), os.path.basename(arg))
     else:
-        print(sys.argv[-1], "does not seem to be a directory")
+        print(arg, "does not seem to be a file or directory")
     app.exec()
