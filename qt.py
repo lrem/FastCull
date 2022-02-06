@@ -23,11 +23,42 @@ class Wrapper(QtCore.QRunnable):
     def run(self):
         self.function(*self.args, **self.kwargs)
 
-class Viewer(QtWidgets.QWidget):
+class Overlay(QtWidgets.QWidget):
+
+    _height = 64
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.label = QtWidgets.QLabel(self)
+        self.label.setStyleSheet("color: #FEFEFE; font: bold 32px; font-family: Impact")
+        self.effect = QtWidgets.QGraphicsDropShadowEffect(self)
+        self.effect.setOffset(0, 0)
+        self.effect.setBlurRadius(30)
+        self.effect.setColor(Qt.black)
+        self.label.setGraphicsEffect(self.effect)
+
+    def resizeEvent(self, event: QtGui.QResizeEvent) -> None:
+        self.label.resize(self.width(), Overlay._height)
+        return super().resizeEvent(event)
+    
+    def updateContent(self, protected: bool = False):
+        text = ""
+        if(protected):
+            text += "  P"
+        self.label.setText(text)
+
+class Viewer(QtWidgets.QWidget):
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.layout = QtWidgets.QStackedLayout()
+        self.layout.setStackingMode(
+            QtWidgets.QStackedLayout.StackingMode.StackAll)
+        self.overlay = Overlay(parent=self)
+        self.layout.addWidget(self.overlay)
+        self.overlay.updateContent(protected=True)
+        self.label = QtWidgets.QLabel(self)
+        self.layout.addWidget(self.label)
         self.path: str = None
         self.filenames: List[str] = []
         self.load_mutexes: List[QtCore.QMutex] = []
@@ -40,6 +71,7 @@ class Viewer(QtWidgets.QWidget):
     def resizeEvent(self, event: QtGui.QResizeEvent) -> None:
         print("Resizing %d %d" % (self.width(), self.height()))
         self.label.resize(self.width(), self.height())
+        self.overlay.resize(self.width(), self.height())
         self.scaled = [None] * len(self.scaled)
         if self.current_index is not None:
             self.switch(self.current_index)
