@@ -4,6 +4,7 @@ from PySide6 import QtGui
 from PySide6 import QtWidgets
 
 from typing import List
+import file_ops
 import os
 import sys
 import time
@@ -92,6 +93,8 @@ class Viewer(QtWidgets.QWidget):
                 mode=Qt.TransformationMode.SmoothTransformation)
         timing.append((time.time(), "scaling"))
         self.label.setPixmap(self.scaled[new_index])
+        self.overlay.updateContent(protected=file_ops.is_protected(
+            self.path, self.filenames[new_index]))
         timing.append((time.time(), "displaying"))
         for i in range(1, len(timing)):
             print("%.2fs %s" % (timing[i][0] - timing[i-1][0], timing[i][1]))
@@ -131,6 +134,20 @@ class Viewer(QtWidgets.QWidget):
         else:
             self.current_index = None
 
+    def flipProtected(self):
+        fname = self.filenames[self.current_index]
+        old = file_ops.is_protected(self.path, fname)
+        if old:
+            print("Unprotecting:", ",".join(
+                file_ops.related_files(self.path, fname)))
+            file_ops.unprotect(self.path, fname)
+            self.overlay.updateContent(protected=False)
+        else:
+            print("Protecting:", ",".join(
+                file_ops.related_files(self.path, fname)))
+            file_ops.protect(self.path, fname)
+            self.overlay.updateContent(protected=True)
+
     def keyPressEvent(self, event: QtGui.QKeyEvent) -> None:
         event.accept()
         if event.key() == Qt.Key_Escape:
@@ -140,6 +157,8 @@ class Viewer(QtWidgets.QWidget):
                 self.switch((self.current_index + 1) % len(self.filenames))
             if event.key() == Qt.Key.Key_Left:
                 self.switch((self.current_index - 1) % len(self.filenames))
+            if event.key() == Qt.Key.Key_P:
+                self.flipProtected()
         return super().keyPressEvent(event)
 
 if __name__ == '__main__':
