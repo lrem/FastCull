@@ -3,7 +3,7 @@ from PySide6.QtCore import Qt, Slot
 from PySide6 import QtGui
 from PySide6 import QtWidgets
 
-from typing import List
+from typing import List, Optional, cast
 import file_ops
 import os
 import sys
@@ -63,9 +63,9 @@ class Viewer(QtWidgets.QWidget):
         self.path: str = None
         self.filenames: List[str] = []
         self.load_mutexes: List[QtCore.QMutex] = []
-        self.pixmaps: List[QtGui.QPixmap] = []
-        self.scaled: List[QtGui.QPixmap] = []
-        self.current_index: int = None
+        self.pixmaps: List[Optional[QtGui.QPixmap]] = []
+        self.scaled: List[Optional[QtGui.QPixmap]] = []
+        self.current_index: Optional[int] = None
         self.thread_pool = QtCore.QThreadPool()
         self.loads = set()
 
@@ -87,10 +87,11 @@ class Viewer(QtWidgets.QWidget):
         self.load(new_index)
         timing.append((time.time(), "loading"))
         if self.scaled[new_index] is None:
-            self.scaled[new_index] = self.pixmaps[new_index].scaled(
-                self.width(), self.height(),
-                aspectMode=Qt.AspectRatioMode.KeepAspectRatio,
-                mode=Qt.TransformationMode.SmoothTransformation)
+            self.scaled[new_index] = (
+                cast(QtGui.QPixmap, self.pixmaps[new_index]).scaled(
+                    self.width(), self.height(),
+                    aspectMode=Qt.AspectRatioMode.KeepAspectRatio,
+                    mode=Qt.TransformationMode.SmoothTransformation))
         timing.append((time.time(), "scaling"))
         self.label.setPixmap(self.scaled[new_index])
         self.overlay.updateContent(protected=file_ops.is_protected(
