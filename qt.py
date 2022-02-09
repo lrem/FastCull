@@ -153,6 +153,9 @@ class Viewer(QtWidgets.QWidget):
         event.accept()
         if event.key() == Qt.Key_Escape:
             self.close()
+        if event.key() == Qt.Key.Key_O:
+            path = QtWidgets.QFileDialog.getOpenFileName(parent=self, filter="Photos (*.%s)" % (" *.".join(PHOTO_EXTENSIONS)))[0]
+            self.openDir(os.path.dirname(path), os.path.basename(path))
         if self.current_index is not None:
             if event.key() == Qt.Key.Key_Right:
                 self.switch((self.current_index + 1) % len(self.filenames))
@@ -169,8 +172,8 @@ if __name__ == '__main__':
     arg = sys.argv[-1]
     if os.path.isdir(arg):
         window.openDir(arg)
-    elif os.path.isfile(arg):
+    elif os.path.isfile(arg) and any(arg.endswith(e) for e in PHOTO_EXTENSIONS):
         window.openDir(os.path.dirname(arg), os.path.basename(arg))
     else:
-        print(arg, "does not seem to be a file or directory")
+        print(arg, "does not seem to be a photo file or a directory")
     app.exec()
