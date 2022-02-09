@@ -59,6 +59,7 @@ class Viewer(QtWidgets.QWidget):
         self.layout.addWidget(self.overlay)
         self.overlay.updateContent(protected=True)
         self.label = QtWidgets.QLabel(self)
+        self.label.setAlignment(Qt.AlignCenter)
         self.layout.addWidget(self.label)
         self.path: str = None
         self.filenames: List[str] = []
@@ -87,11 +88,13 @@ class Viewer(QtWidgets.QWidget):
         self.load(new_index)
         timing.append((time.time(), "loading"))
         if self.scaled[new_index] is None:
-            self.scaled[new_index] = (
-                cast(QtGui.QPixmap, self.pixmaps[new_index]).scaled(
-                    self.width(), self.height(),
-                    aspectMode=Qt.AspectRatioMode.KeepAspectRatio,
-                    mode=Qt.TransformationMode.SmoothTransformation))
+            source = cast(QtGui.QPixmap, self.pixmaps[new_index])
+            width = min(self.width(), source.width())
+            height = min(self.height(), source.height())
+            self.scaled[new_index] = source.scaled(
+                width, height,
+                aspectMode=Qt.AspectRatioMode.KeepAspectRatio,
+                mode=Qt.TransformationMode.SmoothTransformation)
         timing.append((time.time(), "scaling"))
         self.label.setPixmap(self.scaled[new_index])
         self.overlay.updateContent(protected=file_ops.is_protected(
