@@ -30,23 +30,34 @@ class Overlay(QtWidgets.QWidget):
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self.label = QtWidgets.QLabel(self)
-        self.label.setStyleSheet("color: #FEFEFE; font: bold 32px; font-family: Impact")
-        self.effect = QtWidgets.QGraphicsDropShadowEffect(self)
-        self.effect.setOffset(0, 0)
-        self.effect.setBlurRadius(30)
-        self.effect.setColor(Qt.black)
-        self.label.setGraphicsEffect(self.effect)
-
-    def resizeEvent(self, event: QtGui.QResizeEvent) -> None:
-        self.label.resize(self.width(), Overlay._height)
-        return super().resizeEvent(event)
+        self.setMaximumHeight(Overlay._height)
+        self.layout = QtWidgets.QBoxLayout(
+            QtWidgets.QBoxLayout.Direction.TopToBottom, parent=self)
+        self.filename = QtWidgets.QLabel(self)
+        self.filename.setStyleSheet("color: #FEFEFE; font: 16px; font-family: Impact")
+        self.layout.addWidget(self.filename)
+        self.flags = QtWidgets.QLabel(self)
+        self.flags.setStyleSheet("color: #FEFEFE; font: bold 32px; font-family: Impact")
+        self.layout.addWidget(self.flags)
+        self.outlines = []
+        self.addOutline(self.flags, 40)
+        self.addOutline(self.filename, 20)
     
-    def updateContent(self, protected: bool = False):
+    def addOutline(self, label: QtWidgets.QLabel, radius: float):
+        outline = QtWidgets.QGraphicsDropShadowEffect(self)
+        outline.setOffset(0, 0)
+        outline.setBlurRadius(radius)
+        outline.setColor(Qt.black)
+        label.setGraphicsEffect(outline)
+        self.outlines.append(outline)
+    
+    def updateContent(self, filename:Optional[str] = None, protected: bool = False):
+        if filename is not None:
+            self.filename.setText(filename)
         text = ""
         if(protected):
             text += "  P"
-        self.label.setText(text)
+        self.flags.setText(text)
 
 class Viewer(QtWidgets.QWidget):
 
@@ -57,7 +68,7 @@ class Viewer(QtWidgets.QWidget):
             QtWidgets.QStackedLayout.StackingMode.StackAll)
         self.overlay = Overlay(parent=self)
         self.layout.addWidget(self.overlay)
-        self.overlay.updateContent(protected=True)
+        self.overlay.updateContent()
         self.label = QtWidgets.QLabel(self)
         self.label.setAlignment(Qt.AlignCenter)
         self.layout.addWidget(self.label)
@@ -97,8 +108,9 @@ class Viewer(QtWidgets.QWidget):
                 mode=Qt.TransformationMode.SmoothTransformation)
         timing.append((time.time(), "scaling"))
         self.label.setPixmap(self.scaled[new_index])
-        self.overlay.updateContent(protected=file_ops.is_protected(
-            self.path, self.filenames[new_index]))
+        self.overlay.updateContent(
+            filename=self.filenames[new_index], 
+            protected=file_ops.is_protected(self.path, self.filenames[new_index]))
         timing.append((time.time(), "displaying"))
         for i in range(1, len(timing)):
             print("%.2fs %s" % (timing[i][0] - timing[i-1][0], timing[i][1]))
