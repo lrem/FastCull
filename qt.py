@@ -96,7 +96,7 @@ class Viewer(QtWidgets.QWidget):
         self.current_index = new_index
         self.preload()
         timing.append((time.time(), "launching preload"))
-        self.load(new_index)
+        self.load(new_index, True)
         timing.append((time.time(), "loading"))
         if self.scaled[new_index] is None:
             source = cast(QtGui.QPixmap, self.pixmaps[new_index])
@@ -120,14 +120,18 @@ class Viewer(QtWidgets.QWidget):
         start = self.current_index + 1
         stop = min(self.current_index + PRELOAD_COUNT, len(self.filenames))
         for index in range(start, stop):
-            self.thread_pool.start(Wrapper(self.load, index))
+            if self.pixmaps[index] is None:
+                self.thread_pool.start(Wrapper(self.load, index, False))
 
-    def load(self, index: int):
-        locker = QtCore.QMutexLocker(self.load_mutexes[index])
-        if self.pixmaps[index] is None:
-            full_path = os.path.join(self.path, self.filenames[index])
-            self.pixmaps[index] = QtGui.QPixmap(full_path)
-        locker.unlock()
+    def load(self, index: int, blocking: bool):
+        got_lock = self.load_mutexes[index].tryLock(0 if blocking else 1)
+        if got_lock and self.pixmaps[index] is None:
+            try:
+                full_path = os.path.join(self.path, self.filenames[index])
+                self.pixmaps[index] = QtGui.QPixmap(full_path)
+            except:
+                pass
+        self.load_mutexes[index].unlock()
 
     def openDir(self, path: str, start_file: str = None):
         print("Opening ", path)
