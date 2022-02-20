@@ -135,13 +135,15 @@ class Viewer(QtWidgets.QWidget):
             if self.images[index] is None:
                 try:
                     full_path = os.path.join(self.path, self.filenames[index])
-                    self.images[index] = QtGui.QImage(full_path)
+                    self.images[index] = QtGui.QImage()
+                    cast(QtGui.QImage, self.images[index]).load(full_path)
                     if blocking:
                         print("Preload cache miss!")
                         self.inner_timer.segment("blocking load")
                     else:
                         self.inner_timer.segment("background load")
                 except:
+                    self.images[index] = None
                     self.inner_timer.segment("failed load")
             else:
                 self.inner_timer.segment("skipped load")
