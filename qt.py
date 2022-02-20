@@ -77,8 +77,8 @@ class Viewer(QtWidgets.QWidget):
         self.path: str = None
         self.filenames: List[str] = []
         self.load_mutexes: List[QtCore.QMutex] = []
-        self.pixmaps: List[Optional[QtGui.QPixmap]] = []
-        self.scaled: List[Optional[QtGui.QPixmap]] = []
+        self.images: List[Optional[QtGui.QImage]] = []
+        self.scaled: List[Optional[QtGui.QImage]] = []
         self.current_index: Optional[int] = None
         self.thread_pool = QtCore.QThreadPool()
         self.loads = set()
@@ -103,7 +103,7 @@ class Viewer(QtWidgets.QWidget):
         self.load(new_index, True)
         self.timer.segment("loading")
         if self.scaled[new_index] is None:
-            source = cast(QtGui.QPixmap, self.pixmaps[new_index])
+            source = cast(QtGui.QImage, self.images[new_index])
             width = min(self.width(), source.width())
             height = min(self.height(), source.height())
             self.scaled[new_index] = source.scaled(
@@ -111,7 +111,8 @@ class Viewer(QtWidgets.QWidget):
                 aspectMode=Qt.AspectRatioMode.KeepAspectRatio,
                 mode=Qt.TransformationMode.SmoothTransformation)
         self.timer.segment("scaling")
-        self.label.setPixmap(self.scaled[new_index])
+        self.label.setPixmap(QtGui.QPixmap.fromImage(
+            cast(QtGui.QImage, self.scaled[new_index])))
         self.overlay.updateContent(
             filename=self.filenames[new_index], 
             protected=file_ops.is_protected(self.path, self.filenames[new_index]))
@@ -123,7 +124,7 @@ class Viewer(QtWidgets.QWidget):
         start = self.current_index + 1
         stop = min(self.current_index + PRELOAD_COUNT, len(self.filenames))
         for index in range(start, stop):
-            if self.pixmaps[index] is None:
+            if self.images[index] is None:
                 self.thread_pool.start(Wrapper(self.load, index, False))
 
     def load(self, index: int, blocking: bool):
@@ -131,10 +132,10 @@ class Viewer(QtWidgets.QWidget):
         got_lock = self.load_mutexes[index].tryLock(0 if blocking else 1)
         if got_lock:
             self.inner_timer.segment("lock acquired")
-            if self.pixmaps[index] is None:
+            if self.images[index] is None:
                 try:
                     full_path = os.path.join(self.path, self.filenames[index])
-                    self.pixmaps[index] = QtGui.QPixmap(full_path)
+                    self.images[index] = QtGui.QImage(full_path)
                     if blocking:
                         print("Preload cache miss!")
                         self.inner_timer.segment("blocking load")
@@ -153,13 +154,13 @@ class Viewer(QtWidgets.QWidget):
         print("Opening ", path)
         self.path = path
         self.filenames = []
-        self.pixmaps = []
+        self.images = []
         self.load_mutexes = []
         start = time.time()
         for filename in sorted(os.listdir(path)):
             if filename.split('.')[-1] in PHOTO_EXTENSIONS:
                 self.filenames.append(filename)
-                self.pixmaps.append(None)
+                self.images.append(None)
                 self.scaled.append(None)
                 self.load_mutexes.append(QtCore.QMutex())
         print("%.2fs %s" % (time.time() - start, "listing directory"))
