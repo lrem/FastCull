@@ -102,15 +102,6 @@ class Viewer(QtWidgets.QWidget):
         self.timer.segment("launching preload")
         self.load(new_index, True)
         self.timer.segment("loading")
-        if self.scaled[new_index] is None:
-            source = cast(QtGui.QImage, self.images[new_index])
-            width = min(self.width(), source.width())
-            height = min(self.height(), source.height())
-            self.scaled[new_index] = source.scaled(
-                width, height,
-                aspectMode=Qt.AspectRatioMode.KeepAspectRatio,
-                mode=Qt.TransformationMode.SmoothTransformation)
-        self.timer.segment("scaling")
         self.label.setPixmap(QtGui.QPixmap.fromImage(
             cast(QtGui.QImage, self.scaled[new_index])))
         self.overlay.updateContent(
@@ -124,7 +115,7 @@ class Viewer(QtWidgets.QWidget):
         start = self.current_index + 1
         stop = min(self.current_index + PRELOAD_COUNT, len(self.filenames))
         for index in range(start, stop):
-            if self.images[index] is None:
+            if self.images[index] is None or self.scaled[index] is None:
                 self.thread_pool.start(Wrapper(self.load, index, False))
 
     def load(self, index: int, blocking: bool):
@@ -133,20 +124,28 @@ class Viewer(QtWidgets.QWidget):
         if got_lock:
             self.inner_timer.segment("lock acquired")
             if self.images[index] is None:
+                if blocking:
+                    print("Preload cache miss!")
                 try:
                     full_path = os.path.join(self.path, self.filenames[index])
-                    self.images[index] = QtGui.QImage()
-                    cast(QtGui.QImage, self.images[index]).load(full_path)
-                    if blocking:
-                        print("Preload cache miss!")
-                        self.inner_timer.segment("blocking load")
-                    else:
-                        self.inner_timer.segment("background load")
+                    image = QtGui.QImage()
+                    image.load(full_path)
+                    assert(image.width())
+                    self.images[index] = image
+                    self.inner_timer.segment("successful load")
                 except:
-                    self.images[index] = None
                     self.inner_timer.segment("failed load")
+                    raise
             else:
                 self.inner_timer.segment("skipped load")
+            if self.scaled[index] is None:
+                source = cast(QtGui.QImage, self.images[index])
+                width = min(self.width(), source.width())
+                height = min(self.height(), source.height())
+                self.scaled[index] = source.scaled(
+                    width, height,
+                    aspectMode=Qt.AspectRatioMode.KeepAspectRatio,
+                    mode=Qt.TransformationMode.SmoothTransformation)
         else:
             self.inner_timer.segment("lock not acquired")
         self.load_mutexes[index].unlock()
