@@ -4,10 +4,12 @@ from PySide6 import QtGui
 from PySide6 import QtWidgets
 
 from typing import List, Optional, cast
+
 import file_ops
 import os
 import sys
 import time
+import timer
 
 PHOTO_EXTENSIONS = ["jpg", "JPG", "jpeg", "JPEG"]
 PRELOAD_COUNT = 10
@@ -80,6 +82,8 @@ class Viewer(QtWidgets.QWidget):
         self.current_index: Optional[int] = None
         self.thread_pool = QtCore.QThreadPool()
         self.loads = set()
+        self.timer = timer.Timer()
+        self.inner_timer = timer.Timer(quiet=True)
 
     def resizeEvent(self, event: QtGui.QResizeEvent) -> None:
         print("Resizing %d %d" % (self.width(), self.height()))
@@ -92,12 +96,12 @@ class Viewer(QtWidgets.QWidget):
 
     def switch(self, new_index: int):
         print("Switching to", self.filenames[new_index])
-        timing = [(time.time(), "start")]
+        self.timer.start()
         self.current_index = new_index
         self.preload()
-        timing.append((time.time(), "launching preload"))
+        self.timer.segment("launching preload")
         self.load(new_index, True)
-        timing.append((time.time(), "loading"))
+        self.timer.segment("loading")
         if self.scaled[new_index] is None:
             source = cast(QtGui.QPixmap, self.pixmaps[new_index])
             width = min(self.width(), source.width())
@@ -106,14 +110,13 @@ class Viewer(QtWidgets.QWidget):
                 width, height,
                 aspectMode=Qt.AspectRatioMode.KeepAspectRatio,
                 mode=Qt.TransformationMode.SmoothTransformation)
-        timing.append((time.time(), "scaling"))
+        self.timer.segment("scaling")
         self.label.setPixmap(self.scaled[new_index])
         self.overlay.updateContent(
             filename=self.filenames[new_index], 
             protected=file_ops.is_protected(self.path, self.filenames[new_index]))
-        timing.append((time.time(), "displaying"))
-        for i in range(1, len(timing)):
-            print("%.2fs %s" % (timing[i][0] - timing[i-1][0], timing[i][1]))
+        self.timer.segment("displaying")
+        self.timer.stop()
 
     def preload(self):
         # The current_index one is loaded in main thread if needed.
@@ -124,14 +127,27 @@ class Viewer(QtWidgets.QWidget):
                 self.thread_pool.start(Wrapper(self.load, index, False))
 
     def load(self, index: int, blocking: bool):
+        self.inner_timer.start()
         got_lock = self.load_mutexes[index].tryLock(0 if blocking else 1)
-        if got_lock and self.pixmaps[index] is None:
-            try:
-                full_path = os.path.join(self.path, self.filenames[index])
-                self.pixmaps[index] = QtGui.QPixmap(full_path)
-            except:
-                pass
+        if got_lock:
+            self.inner_timer.segment("lock acquired")
+            if self.pixmaps[index] is None:
+                try:
+                    full_path = os.path.join(self.path, self.filenames[index])
+                    self.pixmaps[index] = QtGui.QPixmap(full_path)
+                    if blocking:
+                        print("Preload cache miss!")
+                        self.inner_timer.segment("blocking load")
+                    else:
+                        self.inner_timer.segment("background load")
+                except:
+                    self.inner_timer.segment("failed load")
+            else:
+                self.inner_timer.segment("skipped load")
+        else:
+            self.inner_timer.segment("lock not acquired")
         self.load_mutexes[index].unlock()
+        self.inner_timer.stop()
 
     def openDir(self, path: str, start_file: str = None):
         print("Opening ", path)
@@ -171,6 +187,10 @@ class Viewer(QtWidgets.QWidget):
     def keyPressEvent(self, event: QtGui.QKeyEvent) -> None:
         event.accept()
         if event.key() == Qt.Key_Escape:
+            print("=== User observable times")
+            self.timer.report()
+            print("=== Internal loading times")
+            self.inner_timer.report()
             self.close()
         if event.key() == Qt.Key.Key_O:
             path = QtWidgets.QFileDialog.getOpenFileName(parent=self, filter="Photos (*.%s)" % (" *.".join(PHOTO_EXTENSIONS)))[0]
@@ -183,6 +203,7 @@ class Viewer(QtWidgets.QWidget):
             if event.key() == Qt.Key.Key_P:
                 self.flipProtected()
         return super().keyPressEvent(event)
+
 
 if __name__ == '__main__':
     app = QtWidgets.QApplication(sys.argv)
